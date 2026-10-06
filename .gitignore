@@ -10,4 +10,6 @@ password.txt
 input/*.xapk
 input/*.apk
 input/translations.json
+input/source-manifest.json
+input/source-parts/
 localization/translations/

@@ -34,7 +34,8 @@ jobs:
           python3 - <<'PY'
           import os
           from pathlib import Path
-          ready = all(Path(p).is_file() for p in ('input/application.xapk', 'input/translations.json'))
+          source_ready = Path('input/application.xapk').is_file() or Path('input/source-manifest.json').is_file()
+          ready = source_ready and Path('input/translations.json').is_file()
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               output.write('ready=' + str(ready).lower() + '\n')
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
@@ -53,6 +54,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Restore large source package
+        if: hashFiles('input/application.xapk') == ''
+        run: python3 scripts/restore_source.py --manifest input/source-manifest.json --output input/application.xapk
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
         with:
           distribution: temurin

@@ -21,6 +21,14 @@ Place an authorized XAPK at `input/application.xapk` and its reviewed name-based
 - `plurals`: resource-name to quantity/text mapping
 - `array_items`: resource-name to item-index/text mapping
 
+For source packages too large for a Git blob, prepare compressed chunks locally:
+
+```sh
+python3 scripts/prepare_source.py --source application.xapk --output input
+```
+
+This only prepares local files. Explicit authorization to publish the proprietary payload and translated catalogue is required before uploading `input/source-manifest.json`, `input/source-parts/`, or `input/translations.json` to a public repository. After approved publication, Actions reassembles the package and verifies every chunk, the compressed stream, and the original package hash before building.
+
 Run locally with Java 17 and Python 3.10 or later:
 
 ```sh
