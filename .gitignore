@@ -1,0 +1,13 @@
+.tools/
+out/
+__pycache__/
+*.p12
+*.jks
+*.keystore
+*.pass
+password.txt
+# Proprietary inputs require explicit public publication approval.
+input/*.xapk
+input/*.apk
+input/translations.json
+localization/translations/

@@ -1,0 +1,94 @@
+name: Native localization build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/**'
+      - '.github/workflows/native-localization.yml'
+      - 'input/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-localization-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate build tools and inputs
+    runs-on: ubuntu-24.04
+    outputs:
+      ready: ${{ steps.inputs.outputs.ready }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Check Python scripts
+        run: |
+          python3 -m compileall -q scripts
+          python3 scripts/build.py --help
+      - name: Check source inputs
+        id: inputs
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          ready = all(Path(p).is_file() for p in ('input/application.xapk', 'input/translations.json'))
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('ready=' + str(ready).lower() + '\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write('Build tools validated.\n\n')
+              if ready:
+                  summary.write('Source inputs are present; native APK packaging can proceed.\n')
+              else:
+                  summary.write('APK compilation is waiting for source inputs. The proprietary application and its translations have not been published to this public repository.\n')
+          PY
+
+  package:
+    name: Build and sign native APK
+    needs: validate
+    if: needs.validate.outputs.ready == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build, align, sign and verify
+        env:
+          SIGNING_KEYSTORE_B64: ${{ secrets.SIGNING_KEYSTORE_B64 }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+        run: |
+          python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+          import subprocess
+          import tempfile
+          command = ['python3', 'scripts/build.py', '--source', 'input/application.xapk', '--catalogue', 'input/translations.json', '--output', 'out']
+          key = os.environ.get('SIGNING_KEYSTORE_B64', '')
+          password = os.environ.get('SIGNING_STORE_PASSWORD', '')
+          if bool(key) != bool(password):
+              raise SystemExit('Both signing key and password secrets are required for persistent signing.')
+          with tempfile.TemporaryDirectory(prefix='private-signing-') as directory:
+              if key:
+                  key_file = Path(directory) / 'key.p12'
+                  key_file.write_bytes(base64.b64decode(key, validate=True))
+                  key_file.chmod(0o600)
+                  password_file = Path(directory) / 'password.txt'
+                  password_file.write_text(password + '\n')
+                  password_file.chmod(0o600)
+                  command += ['--keystore', str(key_file), '--password-file', str(password_file), '--alias', os.environ.get('SIGNING_KEY_ALIAS') or 'localization']
+              subprocess.run(command, check=True)
+          PY
+      - name: Upload verified deliverables
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: localized-native-apk
+          path: out/
+          retention-days: 7
+          if-no-files-found: error
